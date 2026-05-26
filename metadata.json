@@ -1,0 +1,6 @@
+{
+  "name": "IMIR Logistics - Cash Livreurs",
+  "description": "Analyse et visualisation des colis livrés mais non encaissés par les livreurs à partir d'exports ECOTRACK.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
