@@ -12,7 +12,7 @@ import FilterBar from './components/FilterBar';
 import LigneALigneView from './components/LigneALigneView';
 import ParStationView from './components/ParStationView';
 import ReportPDF from './components/ReportPDF';
-import { generateAndDownloadPDF } from './utils/pdfGenerator';
+import { generateAndDownloadPDF, generateAndDownloadCurrentViewPDF } from './utils/pdfGenerator';
 
 export default function App() {
   const [rows, setRows] = useState<EcotrackRow[]>([]);
@@ -240,6 +240,22 @@ export default function App() {
     }
   };
 
+  // Trigger PDF build and download of current active viewport
+  const handleDownloadCurrentViewPDF = async () => {
+    if (isGeneratingPDF) return;
+    setIsGeneratingPDF(true);
+
+    try {
+      // Tiny delay so React render is fully complete and paints everything
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateAndDownloadCurrentViewPDF();
+    } catch (error) {
+      console.error('Failed to export current view PDF:', error);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   // Trigger CSV Build and download for the current filtered raw rows
   const handleDownloadCSV = () => {
     if (filteredRows.length === 0) return;
@@ -368,14 +384,6 @@ export default function App() {
         ) : (
           /* Main Analytical Content */
           <>
-            {/* 4 KPIs Section */}
-            <KPICards 
-              totalCash={kpiStats.totalCash}
-              totalColis={kpiStats.totalColis}
-              stationsCount={kpiStats.stationsCount}
-              joursCount={kpiStats.joursCount}
-            />
-
             {/* Filter Bar */}
             <FilterBar
               stations={uniqueStations}
@@ -401,31 +409,43 @@ export default function App() {
               onViewChange={setActiveView}
               onReset={handleFiltersReset}
               onDownloadPDF={handleDownloadPDF}
+              onDownloadCurrentViewPDF={handleDownloadCurrentViewPDF}
               onDownloadCSV={handleDownloadCSV}
               isDownloadable={filteredGroupedData.length > 0 && !isGeneratingPDF}
             />
 
-            {/* Selected View renderer */}
-            {isGeneratingPDF && (
-              <div className="w-full bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5 mb-6 text-amber-500 text-xs flex items-center justify-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin text-amber-500" />
-                <span>Compiler les pages et générer le document PDF final... Veuillez patienter.</span>
-              </div>
-            )}
+            {/* Captured Dashboard/Component Canvas Area */}
+            <div id="dashboard-capture-area" className="space-y-6 pt-2">
+              {/* 4 KPIs Section */}
+              <KPICards 
+                totalCash={kpiStats.totalCash}
+                totalColis={kpiStats.totalColis}
+                stationsCount={kpiStats.stationsCount}
+                joursCount={kpiStats.joursCount}
+              />
 
-            <div className="mb-8">
-              {activeView === 'ligne' ? (
-                <LigneALigneView 
-                  data={filteredGroupedData} 
-                  selectedSort={selectedSort}
-                  onSortChange={setSelectedSort}
-                />
-              ) : (
-                <ParStationView 
-                  data={filteredGroupedData} 
-                  selectedSort={selectedSort}
-                />
+              {/* Selected View renderer overlay */}
+              {isGeneratingPDF && (
+                <div className="w-full bg-[#10B981]/10 border border-[#10B981]/20 rounded-lg p-3 text-emerald-400 text-xs flex items-center justify-center gap-2 font-mono">
+                  <RefreshCw className="h-4 w-4 animate-spin text-emerald-500" />
+                  <span>Compilation et rendu haute définition en cours... Veuillez patienter.</span>
+                </div>
               )}
+
+              <div className="mb-8">
+                {activeView === 'ligne' ? (
+                  <LigneALigneView 
+                    data={filteredGroupedData} 
+                    selectedSort={selectedSort}
+                    onSortChange={setSelectedSort}
+                  />
+                ) : (
+                  <ParStationView 
+                    data={filteredGroupedData} 
+                    selectedSort={selectedSort}
+                  />
+                )}
+              </div>
             </div>
           </>
         )}
@@ -451,7 +471,12 @@ export default function App() {
           opacity: 0.99
         }}
       >
-        <ReportPDF data={filteredGroupedData} summary={summary} />
+        <ReportPDF 
+          data={filteredGroupedData} 
+          summary={summary} 
+          activeView={activeView}
+          selectedSort={selectedSort}
+        />
       </div>
     </div>
   );

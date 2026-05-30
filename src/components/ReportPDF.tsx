@@ -5,14 +5,16 @@
 
 import React, { useMemo } from 'react';
 import { GroupedData, StationGroup, ImportSummary } from '../types';
-import { formatDA, formatDateFR } from '../utils/formatter';
+import { formatDA, formatDateFR, getStationNum } from '../utils/formatter';
 
 interface ReportPDFProps {
   data: GroupedData[];
   summary: ImportSummary | null;
+  activeView: 'ligne' | 'station';
+  selectedSort: string;
 }
 
-export default function ReportPDF({ data, summary }: ReportPDFProps) {
+export default function ReportPDF({ data, summary, activeView, selectedSort }: ReportPDFProps) {
   // 1. Prepare State List for Page 1 (Classement par station)
   const stationRankings = useMemo(() => {
     const map = new Map<string, { station: string; dates: Set<string>; nbColis: number; totalDA: number }>();
@@ -42,24 +44,158 @@ export default function ReportPDF({ data, summary }: ReportPDFProps) {
   const totalStations = useMemo(() => new Set(data.map(x => x.station)).size, [data]);
   const totalDays = useMemo(() => new Set(data.map(x => x.dateStr)).size, [data]);
 
-  // 2. Prepare Detailed List for Page 2+ (Sorted by Station, then by Date)
-  const detailsSorted = useMemo(() => {
-    return [...data].sort((a, b) => {
-      const stationComp = a.station.localeCompare(b.station);
-      if (stationComp !== 0) return stationComp;
-      return a.dateStr.localeCompare(b.dateStr); // chronological
-    });
-  }, [data]);
+  // 2. Prepare Station Groups if activeView is 'station'
+  const stationGroups = useMemo(() => {
+    const map = new Map<string, {
+      station: string;
+      dates: Set<string>;
+      nbColis: number;
+      totalDA: number;
+      items: { dateStr: string; nbColis: number; montant: number }[];
+    }>();
 
-  // Split details into multiple pages (say 22 rows per page to prevent overflow)
+    data.forEach(item => {
+      if (!map.has(item.station)) {
+        map.set(item.station, {
+          station: item.station,
+          dates: new Set<string>(),
+          nbColis: 0,
+          totalDA: 0,
+          items: []
+        });
+      }
+
+      const group = map.get(item.station)!;
+      group.dates.add(item.dateStr);
+      group.nbColis += item.nbColis;
+      group.totalDA += item.montant;
+      group.items.push({
+        dateStr: item.dateStr,
+        nbColis: item.nbColis,
+        montant: item.montant
+      });
+    });
+
+    return Array.from(map.values()).map(g => ({
+      station: g.station,
+      nbJours: g.dates.size,
+      nbColis: g.nbColis,
+      totalDA: g.totalDA,
+      items: g.items.sort((a, b) => b.dateStr.localeCompare(a.dateStr))
+    })).sort((a, b) => {
+      switch (selectedSort) {
+        case 'amount_desc':
+          return b.totalDA - a.totalDA;
+        case 'amount_asc':
+          return a.totalDA - b.totalDA;
+        case 'station_asc': {
+          const codesA = getStationNum(a.station);
+          const codesB = getStationNum(b.station);
+          if (codesA !== codesB) return codesA - codesB;
+          return a.station.localeCompare(b.station);
+        }
+        case 'station_desc': {
+          const codesA = getStationNum(a.station);
+          const codesB = getStationNum(b.station);
+          if (codesA !== codesB) return codesB - codesA;
+          return b.station.localeCompare(a.station);
+        }
+        case 'station_alpha':
+          return a.station.localeCompare(b.station);
+        case 'colis_desc':
+          return b.nbColis - a.nbColis;
+        default:
+          return b.totalDA - a.totalDA;
+      }
+    });
+  }, [data, selectedSort]);
+
+  // 3. Prepare Ligne-à-Ligne List if activeView is 'ligne'
+  const detailsSorted = useMemo(() => {
+    const list = [...data];
+    list.sort((a, b) => {
+      switch (selectedSort) {
+        case 'amount_desc':
+          return b.montant - a.montant;
+        case 'amount_asc':
+          return a.montant - b.montant;
+        case 'station_asc': {
+          const numA = getStationNum(a.station);
+          const numB = getStationNum(b.station);
+          if (numA !== numB) return numA - numB;
+          return a.station.localeCompare(b.station);
+        }
+        case 'station_desc': {
+          const numA = getStationNum(a.station);
+          const numB = getStationNum(b.station);
+          if (numA !== numB) return numB - numA;
+          return b.station.localeCompare(a.station);
+        }
+        case 'station_alpha':
+          return a.station.localeCompare(b.station);
+        case 'date_desc':
+          return b.dateStr.localeCompare(a.dateStr);
+        case 'date_asc':
+          return a.dateStr.localeCompare(b.dateStr);
+        case 'colis_desc':
+          return b.nbColis - a.nbColis;
+        default:
+          return 0;
+      }
+    });
+    return list;
+  }, [data, selectedSort]);
+
+  // 4. Flatten all detail lines into a continuous indexable array of rows
+  const unifiedFlatRows = useMemo(() => {
+    if (activeView === 'station') {
+      const list: Array<{
+        type: 'station_header' | 'sub_row';
+        station: string;
+        dateStr?: string;
+        nbJours?: number;
+        nbColis: number;
+        montant: number;
+      }> = [];
+      stationGroups.forEach(group => {
+        list.push({
+          type: 'station_header',
+          station: group.station,
+          nbJours: group.nbJours,
+          nbColis: group.nbColis,
+          montant: group.totalDA
+        });
+        group.items.forEach(sub => {
+          list.push({
+            type: 'sub_row',
+            station: group.station,
+            dateStr: sub.dateStr,
+            nbColis: sub.nbColis,
+            montant: sub.montant
+          });
+        });
+      });
+      return list;
+    } else {
+      return detailsSorted.map(item => ({
+        type: 'ligne_row' as const,
+        station: item.station,
+        dateStr: item.dateStr,
+        nbColis: item.nbColis,
+        montant: item.montant
+      }));
+    }
+  }, [activeView, stationGroups, detailsSorted]);
+
+  // Split unified rows into multiple A4 pages dynamically
   const ROWS_PER_PAGE = 22;
   const detailPages = useMemo(() => {
-    const pages: GroupedData[][] = [];
-    for (let i = 0; i < detailsSorted.length; i += ROWS_PER_PAGE) {
-      pages.push(detailsSorted.slice(i, i + ROWS_PER_PAGE));
+    const pages: typeof unifiedFlatRows[] = [];
+    for (let i = 0; i < unifiedFlatRows.length; i += ROWS_PER_PAGE) {
+      pages.push(unifiedFlatRows.slice(i, i + ROWS_PER_PAGE));
     }
     return pages;
-  }, [detailsSorted]);
+  }, [unifiedFlatRows]);
 
   const totalPDFPages = 1 + Math.max(1, detailPages.length);
 
@@ -88,7 +224,7 @@ export default function ReportPDF({ data, summary }: ReportPDFProps) {
           {/* Red banner */}
           <div className="bg-[#C0392B] text-white py-2.5 px-4 rounded-b flex items-center justify-between text-xs mb-6">
             <span className="font-semibold uppercase tracking-wide text-[11px]">Rapport de Synthèse — Cash Livreurs</span>
-            <span className="text-[10px] text-red-100 font-mono">Date : {new Date().toISOString().slice(0,10)}</span>
+            <span className="text-[10px] text-red-100 font-mono">Date : {new Date().toISOString().slice(0, 10)}</span>
           </div>
 
           {/* Business Context */}
@@ -185,7 +321,7 @@ export default function ReportPDF({ data, summary }: ReportPDFProps) {
               <span className="text-sm font-bold font-mono">IMIR LOGISTICS</span>
               <span className="text-[10px] font-mono text-slate-400">Annexe détaillée</span>
             </div>
-            <h3 className="text-sm font-semibold tracking-wide text-slate-500 mb-4">Détail par date et station</h3>
+            <h3 className="text-sm font-semibold tracking-wide text-slate-500 mb-4 font-sans">Détail par date et station</h3>
             <p className="text-xs text-slate-400">Aucune ligne de détail disponible.</p>
           </div>
           <div className="border-t border-slate-200 pt-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
@@ -208,17 +344,21 @@ export default function ReportPDF({ data, summary }: ReportPDFProps) {
                 <div className="border-b-2 border-slate-200 pb-2.5 mb-4 flex items-center justify-between">
                   <div>
                     <span className="text-sm font-bold text-[#1A1D27] font-mono tracking-wider">IMIR LOGISTICS</span>
-                    <span className="ml-3 text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Annexe détaillée</span>
+                    <span className="ml-3 text-[10px] text-slate-400 uppercase tracking-widest font-semibold font-sans">
+                      Annexe détaillée ({activeView === 'station' ? 'Vue Station' : 'Vue Ligne'})
+                    </span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">Détail Station - Date</span>
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-1">
+                  <h4 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-1 font-sans">
                     Détail par date et station (Suite {pageIdx + 1})
                   </h4>
-                  <p className="text-[10px] text-slate-400 leading-none">
-                    Lignes triées par station (alphabétique) puis par date de livraison (chronologique).
+                  <p className="text-[10px] text-slate-400 leading-none font-sans">
+                    {activeView === 'station'
+                      ? 'Lignes groupées par station et triées selon vos critères d’affichage.'
+                      : 'Lignes individuelles triées selon vos critères de tri.'}
                   </p>
                 </div>
 
@@ -227,26 +367,68 @@ export default function ReportPDF({ data, summary }: ReportPDFProps) {
                   <thead>
                     <tr className="bg-[#1A1D27] text-white">
                       <th className="py-1.5 px-3 rounded-l font-semibold w-12">#</th>
-                      <th className="py-1.5 px-3 font-semibold w-32">Date livraison</th>
-                      <th className="py-1.5 px-3 font-semibold">Nom de la Station</th>
+                      <th className="py-1.5 px-3 font-semibold w-40">
+                        {activeView === 'station' ? 'Station / Date' : 'Date livraison'}
+                      </th>
+                      <th className="py-1.5 px-3 font-semibold">
+                        {activeView === 'station' ? 'Type' : 'Nom de la Station'}
+                      </th>
                       <th className="py-1.5 px-3 font-semibold text-right w-24">Nb Colis</th>
-                      <th className="py-1.5 px-3 rounded-r font-semibold text-right w-32">Montant (DA)</th>
+                      <th className="py-1.5 px-3 rounded-r font-semibold text-right w-32 font-mono">Montant (DA)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pageRows.map((row, rowIdx) => {
                       const absoluteIndex = pageIdx * ROWS_PER_PAGE + rowIdx + 1;
-                      return (
-                        <tr key={`${row.station}-${row.dateStr}-${rowIdx}`} className="border-b border-slate-100 hover:bg-slate-50/40 text-slate-700">
-                          <td className="py-1 px-3 font-mono text-slate-400">{absoluteIndex}</td>
-                          <td className="py-1 px-3 font-mono">{formatDateFR(row.dateStr)}</td>
-                          <td className="py-1 px-3 uppercase">{row.station}</td>
-                          <td className="py-1 px-3 text-right font-mono">{row.nbColis}</td>
-                          <td className="py-1 px-3 text-right font-mono font-medium text-slate-900">
-                            {row.montant.toLocaleString('fr-DZ')} DA
-                          </td>
-                        </tr>
-                      );
+                      if (row.type === 'station_header') {
+                        return (
+                          <tr
+                            key={`header-${row.station}-${rowIdx}`}
+                            className="bg-slate-100 font-bold border-b border-slate-200 text-slate-800"
+                          >
+                            <td className="py-1 px-3 font-mono text-slate-500">{absoluteIndex}</td>
+                            <td colSpan={2} className="py-1 px-3 uppercase text-slate-950 font-bold truncate max-w-[320px]">
+                              ★ {row.station} ({row.nbJours} j)
+                            </td>
+                            <td className="py-1 px-3 text-right font-mono text-slate-800">{row.nbColis}</td>
+                            <td className="py-1 px-3 text-right font-mono text-slate-950 font-bold">
+                              {row.montant.toLocaleString('fr-DZ')} DA
+                            </td>
+                          </tr>
+                        );
+                      } else if (row.type === 'sub_row') {
+                        return (
+                          <tr
+                            key={`sub-${row.station}-${row.dateStr}-${rowIdx}`}
+                            className="border-b border-slate-100/50 hover:bg-slate-50/40 text-slate-700"
+                          >
+                            <td className="py-1 px-3 font-mono text-slate-400">{absoluteIndex}</td>
+                            <td className="py-1 px-3 font-mono text-slate-400 pl-6">
+                              └ {formatDateFR(row.dateStr || '')}
+                            </td>
+                            <td className="py-1 px-3 text-slate-400 font-sans">—</td>
+                            <td className="py-1 px-3 text-right font-mono text-slate-500">{row.nbColis}</td>
+                            <td className="py-1 px-3 text-right font-mono text-slate-600">
+                              {row.montant.toLocaleString('fr-DZ')} DA
+                            </td>
+                          </tr>
+                        );
+                      } else {
+                        return (
+                          <tr
+                            key={`ligne-${row.station}-${row.dateStr}-${rowIdx}`}
+                            className="border-b border-slate-100 hover:bg-slate-50/40 text-slate-700"
+                          >
+                            <td className="py-1 px-3 font-mono text-slate-400">{absoluteIndex}</td>
+                            <td className="py-1 px-3 font-mono">{formatDateFR(row.dateStr || '')}</td>
+                            <td className="py-1 px-3 uppercase truncate max-w-[280px]">{row.station}</td>
+                            <td className="py-1 px-3 text-right font-mono">{row.nbColis}</td>
+                            <td className="py-1 px-3 text-right font-mono font-medium text-slate-900">
+                              {row.montant.toLocaleString('fr-DZ')} DA
+                            </td>
+                          </tr>
+                        );
+                      }
                     })}
                   </tbody>
                 </table>

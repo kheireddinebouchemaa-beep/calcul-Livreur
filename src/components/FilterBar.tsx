@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Filter, List, Grid, FileText, CheckSquare, Square, Download } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface FilterBarProps {
   stations: string[];
@@ -26,6 +27,7 @@ interface FilterBarProps {
   onViewChange: (view: 'ligne' | 'station') => void;
   onReset: () => void;
   onDownloadPDF: () => void;
+  onDownloadCurrentViewPDF: () => void;
   onDownloadCSV: () => void;
   isDownloadable: boolean;
 }
@@ -50,6 +52,7 @@ export default function FilterBar({
   onViewChange,
   onReset,
   onDownloadPDF,
+  onDownloadCurrentViewPDF,
   onDownloadCSV,
   isDownloadable
 }: FilterBarProps) {
@@ -204,10 +207,12 @@ export default function FilterBar({
         <div className="flex flex-wrap items-center gap-3 self-end shrink-0">
           {/* View Segmented Control */}
           <div className="flex bg-[#0A0A0B] p-1 rounded-lg border border-zinc-800/50">
-            <button
+            <motion.button
               id="view-ligne-btn"
               onClick={() => onViewChange('ligne')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold tracking-wide transition-all ${
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 15 }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeView === 'ligne'
                   ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -215,11 +220,13 @@ export default function FilterBar({
             >
               <List className="h-3.5 w-3.5" />
               Ligne à ligne
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               id="view-station-btn"
               onClick={() => onViewChange('station')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold tracking-wide transition-all ${
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 15 }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeView === 'station'
                   ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -227,7 +234,7 @@ export default function FilterBar({
             >
               <Grid className="h-3.5 w-3.5" />
               Par station
-            </button>
+            </motion.button>
           </div>
 
           <div className="hidden sm:block text-zinc-800 font-light select-none">|</div>
@@ -257,11 +264,11 @@ export default function FilterBar({
             Télécharger CSV (Brutes)
           </button>
 
-          {/* Emerald Download PDF Button */}
+          {/* Emerald Download PDF (Vue Actuelle) Button */}
           <button
-            id="btn-download-pdf"
+            id="btn-download-pdf-current"
             disabled={!isDownloadable}
-            onClick={onDownloadPDF}
+            onClick={onDownloadCurrentViewPDF}
             className={`flex items-center gap-2 px-4 py-2 font-semibold text-xs text-white rounded transition-all shadow-lg shrink-0 ${
               isDownloadable
                 ? 'bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/30 shadow-emerald-950/25 cursor-pointer'
@@ -269,7 +276,22 @@ export default function FilterBar({
             }`}
           >
             <FileText className="h-4 w-4" />
-            Télécharger PDF
+            Télécharger PDF (Vue Actuelle)
+          </button>
+
+          {/* Download PDF (Rapport A4 Synthèse) Button */}
+          <button
+            id="btn-download-pdf-report"
+            disabled={!isDownloadable}
+            onClick={onDownloadPDF}
+            className={`flex items-center gap-2 px-4 py-2 font-semibold text-xs rounded transition-all shadow-lg shrink-0 ${
+              isDownloadable
+                ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-850 hover:border-zinc-700 cursor-pointer'
+                : 'bg-zinc-950 text-zinc-600 border border-zinc-900 cursor-not-allowed'
+            }`}
+          >
+            <FileText className="h-4 w-4 text-emerald-500" />
+            Rapport A4 (Synthèse)
           </button>
         </div>
       </div>
