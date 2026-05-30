@@ -228,20 +228,53 @@ export default function App() {
   const handleDownloadPDF = async () => {
     if (isGeneratingPDF) return;
     setIsGeneratingPDF(true);
-    
-    const ROWS_PER_PAGE = 22;
-    const detailPagesCount = Math.max(1, Math.ceil(filteredGroupedData.length / ROWS_PER_PAGE));
-    const totalPages = 1 + detailPagesCount;
 
     try {
       // Tiny delay so React render is fully complete and paints everything
       await new Promise(resolve => setTimeout(resolve, 500));
-      await generateAndDownloadPDF(totalPages);
+      await generateAndDownloadPDF();
     } catch (error) {
       console.error('Failed to export PDF:', error);
     } finally {
       setIsGeneratingPDF(false);
     }
+  };
+
+  // Trigger CSV Build and download for the current filtered raw rows
+  const handleDownloadCSV = () => {
+    if (filteredRows.length === 0) return;
+
+    // Header row matching standard French ECOTRACK exports
+    const headers = ['ID Colis', 'Date & Heure de Livraison', 'Station', 'Livreur', 'Montant (DA)'];
+    
+    const csvRows = [
+      headers.join(';'), // Use semi-colon for standard French Excel compatibility
+      ...filteredRows.map(row => {
+        const escapedLivreur = (row.livreur || '').replace(/"/g, '""');
+        const escapedStation = (row.station || '').replace(/"/g, '""');
+        return [
+          `"${row.id || ''}"`,
+          `"${row.livreLe || ''}"`,
+          `"${escapedStation}"`,
+          `"${escapedLivreur}"`,
+          row.total
+        ].join(';');
+      })
+    ];
+
+    // Excel UTF-8 BOM so accents render correctly when double-clicked
+    const csvContent = '\uFEFF' + csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `IMIR_Donnees_Brutes_Livreurs_${dateStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -368,6 +401,7 @@ export default function App() {
               onViewChange={setActiveView}
               onReset={handleFiltersReset}
               onDownloadPDF={handleDownloadPDF}
+              onDownloadCSV={handleDownloadCSV}
               isDownloadable={filteredGroupedData.length > 0 && !isGeneratingPDF}
             />
 
@@ -409,11 +443,12 @@ export default function App() {
       {/* OFF-SCREEN DOM FOR A4 PDF EXPORT (COMPLETELY RENDERS ON FLY AND HIDDEN FOR VISUAL PERFECTION) */}
       <div 
         style={{ 
-          position: 'absolute', 
-          top: '-9999px', 
-          left: '-9999px', 
-          zIndex: -1000, 
-          pointerEvents: 'none' 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          zIndex: -9999, 
+          pointerEvents: 'none',
+          opacity: 0.99
         }}
       >
         <ReportPDF data={filteredGroupedData} summary={summary} />

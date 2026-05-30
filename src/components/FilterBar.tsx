@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Filter, List, Grid, FileText, CheckSquare, Square } from 'lucide-react';
+import { Filter, List, Grid, FileText, CheckSquare, Square, Download } from 'lucide-react';
 
 interface FilterBarProps {
   stations: string[];
@@ -26,6 +26,7 @@ interface FilterBarProps {
   onViewChange: (view: 'ligne' | 'station') => void;
   onReset: () => void;
   onDownloadPDF: () => void;
+  onDownloadCSV: () => void;
   isDownloadable: boolean;
 }
 
@@ -49,6 +50,7 @@ export default function FilterBar({
   onViewChange,
   onReset,
   onDownloadPDF,
+  onDownloadCSV,
   isDownloadable
 }: FilterBarProps) {
 
@@ -238,6 +240,21 @@ export default function FilterBar({
           >
             <span className="w-2 h-2 bg-[#C0392B] rounded-sm"></span>
             Réinitialiser
+          </button>
+
+          {/* CSV Download Button */}
+          <button
+            id="btn-download-csv"
+            disabled={!isDownloadable}
+            onClick={onDownloadCSV}
+            className={`flex items-center gap-2 px-4 py-2 font-semibold text-xs rounded transition-all shadow-lg shrink-0 ${
+              isDownloadable
+                ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-850 hover:border-zinc-700 cursor-pointer'
+                : 'bg-zinc-950 text-zinc-605 text-zinc-600 border border-zinc-900 cursor-not-allowed'
+            }`}
+          >
+            <Download className="h-4 w-4 text-emerald-500" />
+            Télécharger CSV (Brutes)
           </button>
 
           {/* Emerald Download PDF Button */}
